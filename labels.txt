@@ -1,0 +1,7 @@
+0 grin
+1 angry
+2 shush
+3 peek
+4 kiss
+5 tongue
+6 scream
