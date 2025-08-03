@@ -25,10 +25,16 @@ with open(LABELS_PATH, 'r') as f:
 camera = cv2.VideoCapture(0)
 time.sleep(1)
 
+pygame.mixer.init()
 pygame.init()
 screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
 pygame.display.set_caption("Emoji Expression Game")
 clock = pygame.time.Clock()
+
+pygame.mixer.music.load("images/music/background.mp3")
+pygame.mixer.music.play(-1)
+pop_sound = pygame.mixer.Sound("images/music/pop.mp3")
+fail_sound = pygame.mixer.Sound("images/music/fail.mp3")
 
 emoji_surfaces = {}
 for fname in EMOJI_FILES:
@@ -111,10 +117,12 @@ while running:
             screen.blit(current, (x_pos, y_pos))
             if confidence >= CONFIDENCE_THRESHOLD and label == current_label:
                 score += 1
+                pop_sound.play()
                 pop_timer = POP_DURATION
                 pop_pos = (x_pos + 40, y_pos + 40)
             elif y_pos > WINDOW_HEIGHT:
                 lives -= 1
+                fail_sound.play()
                 current = None
                 if lives <= 0:
                     state = 'end'
