@@ -1,51 +1,115 @@
-from keras.models import load_model  # TensorFlow is required for Keras to work
-import cv2  # Install opencv-python
+import cv2
 import numpy as np
+import pygame
+import random
+import time
+from keras.models import load_model
 
-# Disable scientific notation for clarity
-np.set_printoptions(suppress=True)
+WINDOW_WIDTH, WINDOW_HEIGHT = 640, 480
+FPS = 30
+FALL_SPEED = 3
+LIVES = 3
+EMOJI_FOLDER = "images/emojis/"
+EMOJI_FILES = [
+    "grin.png", "angry.png", "shush.png", "peek.png", "kiss.png", "tongue.png", "scream.png",
+]
+MODEL_PATH = "keras_Model.h5"
+LABELS_PATH = "labels.txt"
+CONFIDENCE_THRESHOLD = 0.85
+POP_DURATION = 0.2
 
-# Load the model
-model = load_model("keras_Model.h5", compile=False)
+model = load_model(MODEL_PATH, compile=False)
+with open(LABELS_PATH, 'r') as f:
+    class_names = [line.strip().split()[1] for line in f.readlines()]
 
-# Load the labels
-class_names = open("labels.txt", "r").readlines()
-
-# CAMERA can be 0 or 1 based on default camera of your computer
 camera = cv2.VideoCapture(0)
+time.sleep(1)
 
-while True:
-    # Grab the webcamera's image.
-    ret, image = camera.read()
+pygame.init()
+screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
+pygame.display.set_caption("Emoji Expression Game")
+clock = pygame.time.Clock()
 
-    # Resize the raw image into (224-height,224-width) pixels
-    image = cv2.resize(image, (224, 224), interpolation=cv2.INTER_AREA)
+emoji_surfaces = {}
+for fname in EMOJI_FILES:
+    surf = pygame.image.load(EMOJI_FOLDER + fname).convert_alpha()
+    emoji_surfaces[fname.split('.')[0]] = pygame.transform.smoothscale(surf, (80, 80))
 
-    # Show the image in a window
-    cv2.imshow("Webcam Image", image)
+lives = LIVES
+score = 0
+emojis = EMOJI_FILES.copy()
+random.shuffle(emojis)
+current = None
+x_pos = y_pos = 0
+current_label = None
+pop_timer = 0
+pop_pos = (0, 0)
 
-    # Make the image a numpy array and reshape it to the models input shape.
-    image = np.asarray(image, dtype=np.float32).reshape(1, 224, 224, 3)
+running = True
+while running:
+    dt = clock.tick(FPS) / 1000.0
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
+            running = False
 
-    # Normalize the image array
-    image = (image / 127.5) - 1
+    ret, frame = camera.read()
+    if not ret:
+        break
+    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    frame_rgb = cv2.resize(frame_rgb, (WINDOW_WIDTH, WINDOW_HEIGHT), interpolation=cv2.INTER_AREA)
+    bg_surf = pygame.image.frombuffer(frame_rgb.tobytes(), (WINDOW_WIDTH, WINDOW_HEIGHT), 'RGB')
 
-    # Predicts the model
-    prediction = model.predict(image)
-    index = np.argmax(prediction)
-    class_name = class_names[index]
-    confidence_score = prediction[0][index]
+    img = cv2.resize(frame, (224, 224), interpolation=cv2.INTER_AREA)
+    arr = ((img.astype(np.float32).reshape(1,224,224,3)) / 127.5) - 1
+    preds = model.predict(arr)
+    idx = np.argmax(preds[0])
+    label = class_names[idx]
+    confidence = preds[0][idx]
+    print(f"Predicted: {label} ({confidence*100:.1f}%)")
 
-    # Print prediction and confidence score
-    print("Class:", class_name[2:], end="")
-    print("Confidence Score:", str(np.round(confidence_score * 100))[:-2], "%")
-
-    # Listen to the keyboard for presses.
-    keyboard_input = cv2.waitKey(1)
-
-    # 27 is the ASCII for the esc key on your keyboard.
-    if keyboard_input == 27:
+    if current is None and emojis:
+        fname = emojis.pop()
+        current_label = fname.split('.')[0]
+        current = emoji_surfaces[current_label]
+        x_pos = random.randint(0, WINDOW_WIDTH - 80)
+        y_pos = -80
+    elif current is None and not emojis and pop_timer <= 0:
         break
 
+    screen.blit(bg_surf, (0, 0))
+
+    if pop_timer > 0:
+        pop_timer -= dt
+        radius = int((POP_DURATION - pop_timer) / POP_DURATION * 50)
+        pygame.draw.circle(screen, (255, 255, 0), pop_pos, radius)
+        if pop_timer <= 0:
+            current = None
+    elif current:
+        y_pos += FALL_SPEED
+        screen.blit(current, (x_pos, y_pos))
+        if confidence >= CONFIDENCE_THRESHOLD and label == current_label:
+            score += 1
+            pop_timer = POP_DURATION
+            pop_pos = (x_pos + 40, y_pos + 40)
+        elif y_pos > WINDOW_HEIGHT:
+            lives -= 1
+            current = None
+
+    font = pygame.font.SysFont(None, 30)
+    screen.blit(font.render(f"Lives: {lives}", True, (255,255,255)), (10,10))
+    screen.blit(font.render(f"Score: {score}", True, (255,255,255)), (10,40))
+    pygame.display.flip()
+
+    if lives <= 0:
+        break
+
+screen.fill((0,0,0))
+font = pygame.font.SysFont(None, 50)
+msg = "Game Over" if lives <= 0 else "You Win!"
+surf = font.render(msg, True, (255,0,0))
+screen.blit(surf, (WINDOW_WIDTH//2 - surf.get_width()//2, WINDOW_HEIGHT//2 - surf.get_height()//2))
+pygame.display.flip()
+time.sleep(2)
+
 camera.release()
-cv2.destroyAllWindows()
+pygame.quit()
