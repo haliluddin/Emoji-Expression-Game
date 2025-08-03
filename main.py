@@ -35,6 +35,9 @@ pygame.mixer.music.load("images/music/background.mp3")
 pygame.mixer.music.play(-1)
 pop_sound = pygame.mixer.Sound("images/music/pop.mp3")
 fail_sound = pygame.mixer.Sound("images/music/fail.mp3")
+win_sound = pygame.mixer.Sound("images/music/win.mp3")
+lose_sound = pygame.mixer.Sound("images/music/lose.mp3")
+start_sound = pygame.mixer.Sound("images/music/start.mp3")
 
 emoji_surfaces = {}
 for fname in EMOJI_FILES:
@@ -66,8 +69,10 @@ while running:
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             mx, my = event.pos
             if state == 'start' and start_button.collidepoint(mx, my):
+                start_sound.play()
                 state = 'playing'
             elif state == 'end' and retry_button.collidepoint(mx, my):
+                start_sound.play()
                 lives = LIVES
                 score = 0
                 emojis = EMOJI_FILES.copy()
@@ -96,7 +101,6 @@ while running:
         arr = ((img.astype(np.float32).reshape(1,224,224,3)) / 127.5) - 1
         preds = model.predict(arr)
         idx = np.argmax(preds[0]); label = class_names[idx]; confidence = preds[0][idx]
-
         if current is None and emojis:
             fname = emojis.pop()
             current_label = fname.split('.')[0]
@@ -105,7 +109,10 @@ while running:
             y_pos = -80
         elif current is None and not emojis and pop_timer <= 0:
             state = 'end'
-
+            if lives > 0:
+                win_sound.play()
+            else:
+                lose_sound.play()
         if pop_timer > 0:
             pop_timer -= dt
             radius = int((POP_DURATION - pop_timer) / POP_DURATION * 50)
@@ -126,7 +133,7 @@ while running:
                 current = None
                 if lives <= 0:
                     state = 'end'
-
+                    lose_sound.play()
         screen.blit(font.render(f"Lives: {lives}", True, (255,255,255)), (10,10))
         screen.blit(font.render(f"Score: {score}", True, (255,255,255)), (10,40))
     elif state == 'end':
@@ -136,8 +143,6 @@ while running:
         pygame.draw.rect(screen, (0, 128, 0), retry_button)
         rt = font.render("Try Again", True, (255, 255, 255))
         screen.blit(rt, (retry_button.x + 10, retry_button.y + 10))
-
     pygame.display.flip()
-
 camera.release()
 pygame.quit()
